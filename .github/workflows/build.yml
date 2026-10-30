@@ -23,6 +23,16 @@ jobs:
           repository: seedds/nxnative
           ref: main
 
+      - name: Patch DmGamepad.m typo
+        shell: bash
+        run: |
+          set -euo pipefail
+          GAMEPAD_SRC="$(find . -name DmGamepad.m -type f -print -quit)"
+          if [[ -n "$GAMEPAD_SRC" ]]; then
+            echo "Patching $GAMEPAD_SRC..."
+            sed -i '' 's/deviceMotionbody/deviceMotion/g' "$GAMEPAD_SRC"
+          fi
+
       - name: Install build dependencies
         shell: bash
         run: |
@@ -104,7 +114,6 @@ jobs:
               target = game_dir / pkg.name
               shutil.move(str(pkg), str(target))
               print(f"Prepared package: {target.name}")
-              # Identify base game filename (avoids updates marked with [v65536] etc.)
               if not base_name and ("[v0]" in pkg.name.lower() or not re.search(r"\[v[1-9]\d*\]", pkg.name.lower())):
                   base_name = pkg.stem
 
