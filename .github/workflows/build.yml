@@ -131,7 +131,8 @@ jobs:
           python3 scripts/build_ipa_from_nsp.py \
             "$GAME_DIR" \
             -k "$WORK/prod.keys" \
-            -o "$OUTPUT"
+            -o "$OUTPUT" \
+            --allow-other-metal
 
           test -s "$OUTPUT"
           echo "IPA created: $OUTPUT"
