@@ -1,4 +1,4 @@
-name: NxNative - IPA Builder
+name: NxNative - Generic IPA Builder
 
 on:
   workflow_dispatch:
@@ -22,16 +22,6 @@ jobs:
         with:
           repository: seedds/nxnative
           ref: main
-
-      - name: Patch DmGamepad.m typo
-        shell: bash
-        run: |
-          set -euo pipefail
-          GAMEPAD_SRC="$(find . -name DmGamepad.m -type f -print -quit)"
-          if [[ -n "$GAMEPAD_SRC" ]]; then
-            echo "Patching $GAMEPAD_SRC..."
-            sed -i '' 's/deviceMotionbody/deviceMotion/g' "$GAMEPAD_SRC"
-          fi
 
       - name: Install build dependencies
         shell: bash
@@ -126,6 +116,43 @@ jobs:
               f.write(f"GAME_NAME={clean_name}\n")
 
           print(f"Identified Base Game Name: {clean_name}")
+          PY
+
+      - name: Patch template and build script
+        shell: bash
+        run: |
+          set -euo pipefail
+          # 1. Clean the source templates in this repo so generated code won't include deviceMotionBody
+          find . -type f \( -name "*.m" -o -name "*.h" -o -name "*.mm" \) -exec sed -i '' '/deviceMotionBody/d' {} + || true
+          find . -type f \( -name "*.m" -o -name "*.h" -o -name "*.mm" \) -exec sed -i '' '/deviceMotionbody/d' {} + || true
+
+          # 2. Inject a hook into build_ipa_from_nsp.py so that right before xcodebuild runs,
+          # it automatically scrubs any freshly-generated DmGamepad.m files inside the temp work directories
+          python3 - <<'PY'
+          from pathlib import Path
+
+          script_path = Path("scripts/build_ipa_from_nsp.py")
+          if script_path.exists():
+              content = script_path.read_text()
+              hook = (
+                  "import subprocess\n"
+                  "        subprocess.run(\"find . -name 'DmGamepad.m' -exec sed -i '' '/deviceMotionBody/d' {} + 2>/dev/null || true\", shell=True)\n"
+                  "        subprocess.run(\"find /Users/runner/work/_temp -name 'DmGamepad.m' -exec sed -i '' '/deviceMotionBody/d' {} + 2>/dev/null || true\", shell=True)\n"
+              )
+              if "xcodebuild" in content and "deviceMotionBody" not in content:
+                  # Inject directly before the xcodebuild command is dispatched
+                  lines = content.splitlines(keepends=True)
+                  new_lines = []
+                  injected = False
+                  for line in lines:
+                      if "xcodebuild" in line and not injected:
+                          indent = " " * (len(line) - len(line.lstrip()))
+                          new_lines.append(f"{indent}# Auto-patch DmGamepad typo\n")
+                          new_lines.append(f"{indent}{hook.strip()}\n")
+                          injected = True
+                      new_lines.append(line)
+                  script_path.write_text("".join(new_lines))
+                  print("Injected auto-patch hook into build_ipa_from_nsp.py")
           PY
 
       - name: Build unsigned IPA
