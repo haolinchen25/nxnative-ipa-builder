@@ -1,4 +1,4 @@
-name: NxNative - Generic IPA Builder
+name: NxNative - IPA Builder
 
 on:
   workflow_dispatch:
@@ -28,8 +28,9 @@ jobs:
         run: |
           set -euo pipefail
           brew install xcodegen zstd spirv-cross unar
-          python3 -m pip install --upgrade pip
-          python3 -m pip install lz4 capstone fonttools gdown "backports.zstd; python_version < '3.14'"
+          python3 -m pip install --upgrade pip --break-system-packages
+          python3 -m pip install --break-system-packages \
+            lz4 capstone fonttools gdown "backports.zstd; python_version < '3.14'"
 
       - name: Download game ZIP and keys
         env:
