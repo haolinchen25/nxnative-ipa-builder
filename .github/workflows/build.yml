@@ -27,7 +27,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install xcodegen zstd spirv-cross unar
+          brew install xcodegen zstd spirv-cross unar glslang
           python3 -m pip install --upgrade pip --break-system-packages
           python3 -m pip install --break-system-packages \
             lz4 capstone fonttools gdown "backports.zstd; python_version < '3.14'"
