@@ -1,0 +1,42 @@
+name: Stream Direct URL to Google Drive
+
+on:
+  workflow_dispatch:
+    inputs:
+      file_url:
+        description: "Direct download URL (e.g., from datanodes)"
+        required: true
+        type: string
+      filename:
+        description: "Saved filename on Google Drive"
+        required: true
+        default: "EA_SPORTS_FC_27_Switch_Base.rar"
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  transfer:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rclone
+        shell: bash
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Stream Directly to Google Drive
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONFIG_DATA }}
+          FOLDER_ID: "1-5Y2V5c5Tt2CdvhxCNainyJq0Juta3Pt"
+          URL: ${{ inputs.file_url }}
+          FILENAME: ${{ inputs.filename }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+
+          echo "Streaming $FILENAME directly from source to Google Drive..."
+          rclone copyurl "$URL" "gdrive:$FILENAME" --drive-root-folder-id "$FOLDER_ID" -P --drive-use-trash=false
+          echo "Transfer complete!"
