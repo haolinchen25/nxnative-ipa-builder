@@ -1,0 +1,29 @@
+name: Check Google Drive Storage
+
+on:
+  workflow_dispatch:
+
+jobs:
+  check-drive:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Install Rclone
+        shell: bash
+        run: |
+          curl https://rclone.org/install.sh | sudo bash
+
+      - name: Check Cloud Connection and Quota
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONFIG_DATA }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+
+          echo "=== 1. Checking OAuth Token & Drive Quota ==="
+          rclone about "gdrive:"
+
+          echo -e "\n=== 2. Listing Files in Target Folder ==="
+          rclone lsf "gdrive:" --drive-root-folder-id "$FOLDER_ID" --max-depth 1
