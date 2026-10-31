@@ -7,6 +7,15 @@ on:
         description: "Google Drive URL for the ZIP/RAR containing game files"
         required: true
         type: string
+      save_destination:
+        description: "Where to save the compiled IPA"
+        required: true
+        type: choice
+        default: "Both"
+        options:
+          - "Google Drive"
+          - "Artifact"
+          - "Both"
 
 permissions:
   contents: read
@@ -122,7 +131,6 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          # Sanitize all template files inside the checkout before generation begins
           python3 - <<'PY'
           from pathlib import Path
           exts = {".m", ".h", ".mm", ".c", ".cpp"}
@@ -147,8 +155,6 @@ jobs:
           GAME_DIR="$RUNNER_TEMP/GameFiles"
           OUTPUT="$RUNNER_TEMP/${GAME_NAME}.ipa"
 
-          # Start a background watchdog that strips deviceMotionBody every 2 seconds
-          # whenever the compiler generates or extracts DmGamepad.m in temporary folders
           (
             while true; do
               find "$RUNNER_TEMP" "$GITHUB_WORKSPACE" -type f -name "DmGamepad.m" 2>/dev/null | while read -r file; do
@@ -163,7 +169,6 @@ jobs:
           ) &
           WATCHDOG_PID=$!
 
-          # Ensure the watchdog process is killed when this step finishes
           trap 'kill $WATCHDOG_PID 2>/dev/null || true' EXIT
 
           python3 scripts/build_ipa_from_nsp.py \
@@ -178,8 +183,18 @@ jobs:
           test -s "$OUTPUT"
           echo "IPA created: $OUTPUT"
 
-      - name: Upload IPA
-        if: success()
+      - name: Upload IPA to Google Drive
+        if: success() && (inputs.save_destination == 'Google Drive' || inputs.save_destination == 'Both')
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          credentials: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
+          filename: "${{ runner.temp }}/${{ env.GAME_NAME }}.ipa"
+          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
+          name: "${{ env.GAME_NAME }}.ipa"
+          overwrite: "true"
+
+      - name: Upload IPA to GitHub Artifacts
+        if: success() && (inputs.save_destination == 'Artifact' || inputs.save_destination == 'Both')
         uses: actions/upload-artifact@v4
         with:
           name: ${{ env.GAME_NAME }}
