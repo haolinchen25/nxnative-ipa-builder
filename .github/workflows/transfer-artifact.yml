@@ -17,10 +17,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Install Google API client
+      - name: Install Rclone
         shell: bash
         run: |
-          python3 -m pip install --break-system-packages google-api-python-client google-auth
+          curl https://rclone.org/install.sh | sudo bash
 
       - name: Download Artifact from GitHub
         env:
@@ -49,38 +49,16 @@ jobs:
           echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
           echo "IPA_NAME=$IPA_NAME" >> "$GITHUB_ENV"
 
-      - name: Upload IPA to Google Drive
+      - name: Configure Rclone and Upload to Google Drive
         env:
-          GDRIVE_CREDS: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
+          RCLONE_CONF: ${{ secrets.RCLONE_CONFIG_DATA }}
           FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
         shell: bash
         run: |
-          python3 - <<'PY'
-          import json, os, sys
-          from google.oauth2 import service_account
-          from googleapiclient.discovery import build
-          from googleapiclient.http import MediaFileUpload
+          set -euo pipefail
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
 
-          creds_data = json.loads(os.environ["GDRIVE_CREDS"])
-          folder_id = os.environ["FOLDER_ID"].strip()
-          file_path = os.environ["IPA_PATH"]
-          file_name = os.environ["IPA_NAME"]
-
-          creds = service_account.Credentials.from_service_account_info(
-              creds_data, scopes=["https://www.googleapis.com/auth/drive"]
-          )
-          service = build("drive", "v3", credentials=creds)
-
-          media = MediaFileUpload(file_path, mimetype="application/octet-stream", resumable=True)
-          metadata = {"name": file_name, "parents": [folder_id]}
-
-          print(f"Uploading {file_name} to Google Drive...")
-          request = service.files().create(body=metadata, media_body=media, fields="id")
-          response = None
-          while response is None:
-              status, response = request.next_chunk()
-              if status:
-                  print(f"Uploaded {int(status.progress() * 100)}%")
-
-          print(f"Uploaded successfully! File ID: {response.get('id')}")
-          PY
+          echo "Uploading $IPA_NAME to Google Drive folder ($FOLDER_ID)..."
+          rclone copy "$IPA_PATH" "gdrive:$FOLDER_ID" -P --drive-use-trash=false
+          echo "Transfer complete!"
