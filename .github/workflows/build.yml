@@ -118,41 +118,25 @@ jobs:
           print(f"Identified Base Game Name: {clean_name}")
           PY
 
-      - name: Patch template and build script
+      - name: Clean static templates
         shell: bash
         run: |
           set -euo pipefail
-          # 1. Clean the source templates in this repo so generated code won't include deviceMotionBody
-          find . -type f \( -name "*.m" -o -name "*.h" -o -name "*.mm" \) -exec sed -i '' '/deviceMotionBody/d' {} + || true
-          find . -type f \( -name "*.m" -o -name "*.h" -o -name "*.mm" \) -exec sed -i '' '/deviceMotionbody/d' {} + || true
-
-          # 2. Inject a hook into build_ipa_from_nsp.py so that right before xcodebuild runs,
-          # it automatically scrubs any freshly-generated DmGamepad.m files inside the temp work directories
+          # Sanitize all template files inside the checkout before generation begins
           python3 - <<'PY'
           from pathlib import Path
-
-          script_path = Path("scripts/build_ipa_from_nsp.py")
-          if script_path.exists():
-              content = script_path.read_text()
-              hook = (
-                  "import subprocess\n"
-                  "        subprocess.run(\"find . -name 'DmGamepad.m' -exec sed -i '' '/deviceMotionBody/d' {} + 2>/dev/null || true\", shell=True)\n"
-                  "        subprocess.run(\"find /Users/runner/work/_temp -name 'DmGamepad.m' -exec sed -i '' '/deviceMotionBody/d' {} + 2>/dev/null || true\", shell=True)\n"
-              )
-              if "xcodebuild" in content and "deviceMotionBody" not in content:
-                  # Inject directly before the xcodebuild command is dispatched
-                  lines = content.splitlines(keepends=True)
-                  new_lines = []
-                  injected = False
-                  for line in lines:
-                      if "xcodebuild" in line and not injected:
-                          indent = " " * (len(line) - len(line.lstrip()))
-                          new_lines.append(f"{indent}# Auto-patch DmGamepad typo\n")
-                          new_lines.append(f"{indent}{hook.strip()}\n")
-                          injected = True
-                      new_lines.append(line)
-                  script_path.write_text("".join(new_lines))
-                  print("Injected auto-patch hook into build_ipa_from_nsp.py")
+          exts = {".m", ".h", ".mm", ".c", ".cpp"}
+          for p in Path(".").rglob("*"):
+              if p.is_file() and p.suffix in exts:
+                  try:
+                      text = p.read_text(errors="ignore")
+                      if "deviceMotionBody" in text or "deviceMotionbody" in text:
+                          lines = [l for l in text.splitlines(keepends=True) 
+                                   if "deviceMotionBody" not in l and "deviceMotionbody" not in l]
+                          p.write_text("".join(lines))
+                          print(f"Cleaned template: {p}")
+                  except Exception:
+                      pass
           PY
 
       - name: Build unsigned IPA
@@ -163,11 +147,33 @@ jobs:
           GAME_DIR="$RUNNER_TEMP/GameFiles"
           OUTPUT="$RUNNER_TEMP/${GAME_NAME}.ipa"
 
+          # Start a background watchdog that strips deviceMotionBody every 2 seconds
+          # whenever the compiler generates or extracts DmGamepad.m in temporary folders
+          (
+            while true; do
+              find "$RUNNER_TEMP" "$GITHUB_WORKSPACE" -type f -name "DmGamepad.m" 2>/dev/null | while read -r file; do
+                if grep -Eq "deviceMotionBody|deviceMotionbody" "$file" 2>/dev/null; then
+                  sed -i '' '/deviceMotionBody/d' "$file" 2>/dev/null || true
+                  sed -i '' '/deviceMotionbody/d' "$file" 2>/dev/null || true
+                  echo "Watchdog patched generated file: $file"
+                fi
+              done
+              sleep 2
+            done
+          ) &
+          WATCHDOG_PID=$!
+
+          # Ensure the watchdog process is killed when this step finishes
+          trap 'kill $WATCHDOG_PID 2>/dev/null || true' EXIT
+
           python3 scripts/build_ipa_from_nsp.py \
             "$GAME_DIR" \
             -k "$WORK/prod.keys" \
             -o "$OUTPUT" \
             --allow-other-metal
+
+          kill $WATCHDOG_PID 2>/dev/null || true
+          trap - EXIT
 
           test -s "$OUTPUT"
           echo "IPA created: $OUTPUT"
@@ -186,4 +192,3 @@ jobs:
         shell: bash
         run: |
           rm -rf "$RUNNER_TEMP/nxnative" "$RUNNER_TEMP/GameFiles"
-          
