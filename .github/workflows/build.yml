@@ -36,7 +36,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          brew install xcodegen zstd spirv-cross unar glslang
+          brew install xcodegen zstd spirv-cross unar glslang rclone
           python3 -m pip install --break-system-packages \
             lz4 capstone fonttools gdown "backports.zstd; python_version < '3.14'"
 
@@ -185,13 +185,19 @@ jobs:
 
       - name: Upload IPA to Google Drive
         if: success() && (inputs.save_destination == 'Google Drive' || inputs.save_destination == 'Both')
-        uses: adityak74/google-drive-upload-git-action@main
-        with:
-          credentials: ${{ secrets.GDRIVE_CREDENTIALS_DATA }}
-          filename: "${{ runner.temp }}/${{ env.GAME_NAME }}.ipa"
-          folderId: ${{ secrets.GDRIVE_FOLDER_ID }}
-          name: "${{ env.GAME_NAME }}.ipa"
-          overwrite: "true"
+        env:
+          RCLONE_CONF: ${{ secrets.RCLONE_CONFIG_DATA }}
+          FOLDER_ID: ${{ secrets.GDRIVE_FOLDER_ID }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p ~/.config/rclone
+          echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
+
+          OUTPUT="$RUNNER_TEMP/${GAME_NAME}.ipa"
+          echo "Uploading $OUTPUT to Google Drive folder..."
+          rclone copy "$OUTPUT" "gdrive:" --drive-root-folder-id "$FOLDER_ID" -P --drive-use-trash=false
+          echo "Upload complete!"
 
       - name: Upload IPA to GitHub Artifacts
         if: success() && (inputs.save_destination == 'Artifact' || inputs.save_destination == 'Both')
