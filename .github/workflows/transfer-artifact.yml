@@ -59,6 +59,6 @@ jobs:
           mkdir -p ~/.config/rclone
           echo "$RCLONE_CONF" > ~/.config/rclone/rclone.conf
 
-          echo "Uploading $IPA_NAME to Google Drive folder ($FOLDER_ID)..."
-          rclone copy "$IPA_PATH" "gdrive:$FOLDER_ID" -P --drive-use-trash=false
+          echo "Uploading $IPA_NAME to Google Drive folder..."
+          rclone copy "$IPA_PATH" "gdrive:" --drive-root-folder-id "$FOLDER_ID" -P --drive-use-trash=false
           echo "Transfer complete!"
